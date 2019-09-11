@@ -1,0 +1,42 @@
+ # cassandra-stress user profile=./dummydata.yaml ops\(insert=1\)
+ 
+keyspace: test_zcs
+keyspace_definition: |
+  CREATE KEYSPACE test_zcs WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 3};
+table: blogposts
+table_definition: |
+  CREATE TABLE blogposts (
+        domain text,
+        published_date timeuuid,
+        url text,
+        author text,
+        title text,
+        body text,
+        PRIMARY KEY(domain, published_date)
+  ) WITH CLUSTERING ORDER BY (published_date DESC)
+    AND compaction = { 'class':'LeveledCompactionStrategy' }
+
+columnspec:
+  - name: domain
+    size: gaussian(5..100)       #domain names are relatively short
+    population: uniform(1..10M)  #10M possible domains to pick from
+  - name: published_date
+    cluster: fixed(5000)         #under each domain we will have max 1000 posts
+  - name: url
+    size: uniform(30..300)
+  - name: title                  #titles shouldn't go beyond 200 chars
+    size: gaussian(10..200)
+  - name: author
+    size: uniform(5..20)         #author names should be short
+  - name: body
+    size: gaussian(5000..25000)    #the body of the blog post can be long
+
+insert:
+  partitions: fixed(1)            # Our partition key is the domain so only insert one per batch
+  select:    fixed(1)/5000        # We have 1000 posts per domain so 1/1000 will allow 1 post per batch
+  batchtype: UNLOGGED             # Unlogged batches
+
+queries:
+   singlepost:
+      cql: select * from blogposts where domain = ? LIMIT 1
+      fields: samerow
